@@ -174,6 +174,31 @@ await navigate(baseUrl + '/index.html');
 s = await evalJs(GATE);
 ok('E3 记录版本更旧（模拟改版）后须知重新出现', s.page === true && s.active === true, s);
 
+// ===== G：滚动态可达性（#1581 用户报「有的手机第 7 题以后刷不出来」）=====
+// 小视口下模拟真实滚动：逐步滚 .eqz-scroll 到底，断言第 8 题与最终确认按钮进入可视区。
+console.log('G 滚动到底可达性（390x660 视口）');
+await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 660, deviceScaleFactor: 2, mobile: true });
+await navigate(baseUrl + '/index.html');
+s = await evalJs(GATE);
+ok('G1 小视口下须知层在场', s.page === true && s.active === true);
+const SCROLLINFO = `(function(){
+  var sc=document.getElementById('nrz-scroll'); if(!sc) return null;
+  sc.scrollTop = sc.scrollHeight; // 模拟用户一路滑到底
+  var q8=document.querySelectorAll('#entry-rules-page .eqz-q')[7];
+  var btn=document.getElementById('nrz-confirm');
+  var vh=window.innerHeight;
+  function vis(el){ if(!el) return null; var r=el.getBoundingClientRect(); return { top:Math.round(r.top), bottom:Math.round(r.bottom), inView: r.top < vh && r.bottom > 0 }; }
+  return JSON.stringify({ sh:sc.scrollHeight, ch:sc.clientHeight, maxTop:sc.scrollHeight-sc.clientHeight, gotTop:Math.round(sc.scrollTop),
+    q8:vis(q8), btn:vis(btn), vh:vh });
+})()`;
+const g = JSON.parse(await evalJs(SCROLLINFO) || 'null');
+ok('G2 滚动容器存在且内容超高（sh>ch＝确有可滚内容）', g && g.sh > g.ch, g);
+ok('G3 scrollTop 能到达理论最大值', g && g.gotTop >= g.maxTop - 2, g);
+ok('G4 第 8 题滚到底后进入可视区', g && g.q8 && g.q8.inView, g);
+ok('G5 最终确认按钮滚到底后进入可视区', g && g.btn && g.btn.inView, g);
+ok('G6 滚动可视区高度正常（≥视口 55%，防 foot 被 env 异常撑爆挤扁）', g && g.ch >= g.vh * 0.55, g);
+await cdp('Emulation.clearDeviceMetricsOverride');
+
 console.log('\n结果：' + pass + ' 通过 / ' + fail + ' 失败');
 chrome.kill();
 server.close();
