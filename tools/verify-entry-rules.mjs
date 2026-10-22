@@ -265,7 +265,7 @@ console.log('H 强制刷新弹窗·本版一次性强提醒（旧构建号页面
   ok('H1 旧构建号页面弹出强制刷新弹窗（不依赖 version.json 比对）', h1 && h1.ts === String(OLD_TS) && h1.shown === true, h1);
   ok('H2 弹窗标题/按钮指向 2026.10.22 且正文提到第 8 题修复', h1 && h1.titled === true && h1.bodyHit === true && h1.btn === true, h1);
   const h2 = await evalJs("(function(){try{return localStorage.getItem('xy-home-v2:update-remind-force')}catch(e){return null}})()");
-  ok('H3 强提醒标记落盘（本版只提醒一次）', h2 === '2026-10-22d', h2);
+  ok('H3 强提醒标记落盘（本版只提醒一次）', h2 === '2026-10-22e', h2);
   // H4 同会话重复调用不叠加第二层（弹窗自带 done 去重；这里不重载页面——探针对同一 URL 连续导航不稳）
   const h3 = JSON.parse(await evalJs(`(function(){
     window.mochiUpdateRemindShow && window.mochiUpdateRemindShow();

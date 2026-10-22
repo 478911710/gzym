@@ -104,8 +104,8 @@
        已是最新包（ts 更大）→ 不弹，不制造无谓打扰。
      弹过即记标记 xy-home-v2:update-remind-force（已进 contacts.js EXCLUDE），本版不再重复；
      下次要再强提醒只需改 FORCE_TAG（并同步 FORCE_FLOOR_TS）。 */
-  const FORCE_TAG = '2026-10-22d';
-  const FORCE_FLOOR_TS = 1792655277595; // 2026-10-22 15:47 那一版（#1581）的构建 ts：此值及更早＝旧包
+  const FORCE_TAG = '2026-10-22e';
+  const FORCE_FLOOR_TS = 1792664135762; // 2026-10-22 18:15 那一版（含 #1581/#1582 两版未覆盖全机型的包）的构建 ts：此值及更早＝旧包，一律必弹
   const FORCE_KEY = 'update-remind-force';
   const G = 'xy-home-v2';
   function fGet(k) {
