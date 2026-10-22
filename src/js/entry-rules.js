@@ -130,20 +130,27 @@
     el.innerHTML =
       '<div class="eqz-view" id="nrz-view-quiz">' +
       '<div class="eqz-scroll" id="nrz-scroll">' +
-      '<div class="eqz-head">' +
+      '<div class="eqz-head" id="nrz-intro">' +
       '<div class="eqz-title">本站入站须知</div>' +
+      // #1583 自检入口（作者要求：不再靠猜）。放页头＝永远可达，点了把本机真实几何数据摊开，可复制回传。
+      '<button type="button" id="nrz-diag-btn" style="margin:8px 0 2px;padding:6px 10px;font-size:11.5px;line-height:1.4;border:1px dashed currentColor;border-radius:8px;background:transparent;color:inherit;opacity:.72;cursor:pointer;touch-action:manipulation">显示不全 / 看不到第 8 题？点这里自检</button>' +
+      '<pre id="nrz-diag" hidden style="margin:8px 0 0;padding:10px;max-height:210px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-size:10.5px;line-height:1.55;background:rgba(127,127,127,.12);border-radius:8px"></pre>' +
       '<div class="eqz-sub">' + esc(RULE_PARA1) + '</div>' +
       '<div class="eqz-sub">' + esc(RULE_PARA2) + '</div>' +
       '<div class="eqz-sub">完成下面「入站氛围确认」的全部题目并接受规则，即可继续进入开屏公告。本确认只需完成一次：通过后本机会记住，以后打开不再出现（仅当须知内容更新后才会重新出现一次）。</div>' +
       '</div>' +
       rows +
-      '<div class="eqz-q"><div class="eqz-qh"><span class="eqz-idx">最终确认</span></div>' +
+      '<div class="eqz-q" id="nrz-final"><div class="eqz-qh"><span class="eqz-idx">最终确认</span></div>' +
       '<div class="eqz-sub">我已阅读并接受以上规则。点击下方按钮提交确认，全部符合须知要求即可继续进入开屏公告。</div></div>' +
       '</div>' +
       '<div class="eqz-foot">' +
       '<div class="eqz-progress" id="nrz-progress">已答 0 / ' + total + '</div>' +
-      '<div class="eqz-note">作答过程不显示对错；提交后如未全部符合要求，会告知哪些题需要重新确认（页面不会泄露答案）。</div>' +
-      '<button type="button" class="eqz-btn" id="nrz-confirm">我已阅读并接受以上规则，继续。</button>' +
+      '<div class="eqz-note" id="nrz-note">作答过程不显示对错；提交后如未全部符合要求，会告知哪些题需要重新确认（页面不会泄露答案）。</div>' +
+      '<div id="nrz-step" style="font-size:11.5px;line-height:1.5;margin-bottom:7px;opacity:.72">第 1 / ' + (total + 2) + ' 步 · 规则说明</div>' +
+      '<div style="display:flex;gap:8px;align-items:stretch">' +
+      '<button type="button" class="eqz-btn" id="nrz-prev" style="flex:0 0 32%;background:transparent;color:inherit;border:1px solid currentColor;opacity:.72">上一步</button>' +
+      '<button type="button" class="eqz-btn" id="nrz-confirm" style="flex:1">开始确认 →</button>' +
+      '</div>' +
       '</div></div>' +
       '<div class="eqz-view" id="nrz-view-result" hidden></div>';
 
@@ -152,6 +159,67 @@
     // #1582：须知页改「.splash 整页单层滚动」——不依赖 flex 高度传递（见 entry-quiz.css 末尾 #1582 段）
     sp.classList.add('rules-open');
     pageEl = el;
+
+    /* #1583（作者：别再猜）——页头自检：点一下把本机真实几何数值摊开、可复制回传。
+       只读布局数值（不含任何聊天/账号数据），用于把「看不到第 8 题」从猜测变成可核对的现场。 */
+    const diagBtn = el.querySelector('#nrz-diag-btn');
+    const diagPre = el.querySelector('#nrz-diag');
+    function boxInfo(sel) {
+      const n = document.querySelector(sel);
+      if (!n) return sel + ': (无)';
+      const r = n.getBoundingClientRect();
+      const cs = getComputedStyle(n);
+      return sel + ': top=' + Math.round(r.top) + ' bottom=' + Math.round(r.bottom) + ' h=' + Math.round(r.height) +
+        ' | scrollH=' + n.scrollHeight + ' clientH=' + n.clientHeight + ' scrollTop=' + Math.round(n.scrollTop) +
+        ' | pos=' + cs.position + ' height=' + cs.height + ' minH=' + cs.minHeight +
+        ' overflowY=' + cs.overflowY + ' flex=' + cs.flex + ' display=' + cs.display;
+    }
+    if (diagBtn) diagBtn.addEventListener('click', function () {
+      const vv = window.visualViewport;
+      const sv = document.getElementById('splash-ver');
+      const sp = document.getElementById('splash');
+      const q8 = el.querySelectorAll('.eqz-q')[7];
+      const cbtn = el.querySelector('#nrz-confirm');
+      let probe = '未测';
+      try {
+        if (sp) {
+          const before = Math.round(sp.scrollTop);
+          sp.scrollTop = sp.scrollHeight;
+          probe = before + ' → ' + Math.round(sp.scrollTop) + ' / 上限 ' + (sp.scrollHeight - sp.clientHeight);
+        }
+      } catch (e5) { probe = 'err'; }
+      function rectOf(n) {
+        if (!n) return '无';
+        const r = n.getBoundingClientRect();
+        return 'top=' + Math.round(r.top) + ' bottom=' + Math.round(r.bottom) + ' h=' + Math.round(r.height);
+      }
+      const lines = [
+        '构建: ' + (sv ? sv.getAttribute('data-version') + ' / ts ' + sv.getAttribute('data-build-ts') : '无'),
+        'UA: ' + navigator.userAgent,
+        '屏幕: ' + screen.width + 'x' + screen.height + ' dpr' + (window.devicePixelRatio || 1),
+        'inner: ' + window.innerWidth + 'x' + window.innerHeight +
+          ' | visualViewport: ' + (vv ? Math.round(vv.width) + 'x' + Math.round(vv.height) + ' offTop=' + Math.round(vv.offsetTop) + ' scale=' + vv.scale : '无'),
+        'docEl: clientH=' + document.documentElement.clientHeight + ' scrollH=' + document.documentElement.scrollHeight +
+          ' | body: clientH=' + document.body.clientHeight + ' scrollH=' + document.body.scrollHeight,
+        boxInfo('#splash'),
+        boxInfo('#entry-rules-page'),
+        boxInfo('#nrz-view-quiz'),
+        boxInfo('#nrz-scroll'),
+        '第8题: ' + rectOf(q8),
+        '确认按钮: ' + rectOf(cbtn),
+        '置底尝试: ' + probe,
+        '—— 请把以上全部内容复制/截图发给作者 ——'
+      ];
+      diagPre.hidden = false;
+      diagPre.textContent = lines.join('\n');
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(diagPre.textContent);
+        else {
+          const rg = document.createRange(); rg.selectNodeContents(diagPre);
+          const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rg);
+        }
+      } catch (e6) {}
+    });
 
     const progressEl = el.querySelector('#nrz-progress');
     function refreshProgress() {
@@ -175,6 +243,41 @@
     });
 
     const scrollEl = el.querySelector('#nrz-scroll');
+
+    /* #1583 一题一屏（作者：要覆盖全部机型）。
+       为什么：前两次都赌「某内核的滚动/高度算错」，改完仍有人在个别机型上到不了第 8 题。
+       现在不再依赖滚动：整页任何时刻只有一屏内容（规则说明 / 单题 / 最终确认），
+       底部操作条（上一步·下一步/提交）是 .eqz-view 的固定子元素、永远不参与滚动——
+       即便某台机器内层滚动完全失效、或可视区被地址栏/系统字体挤到只剩半屏，
+       用户也能靠按按钮逐题走完，第 8 题与提交按钮都必然可达。滚动只作为「内容超高」时的兜底。 */
+    let step = 0;                 // 0＝规则说明，1..total＝第 n 题，total+1＝最终确认
+    const LAST_STEP = total + 1;
+    const introEl = el.querySelector('#nrz-intro');
+    const finalEl = el.querySelector('#nrz-final');
+    const stepEl = el.querySelector('#nrz-step');
+    const prevBtnEl = el.querySelector('#nrz-prev');
+    function renderStep() {
+      if (introEl) introEl.hidden = step !== 0;
+      Array.prototype.forEach.call(el.querySelectorAll('.eqz-q[data-i]'), function (q) {
+        q.hidden = (parseInt(q.getAttribute('data-i'), 10) + 1) !== step;
+      });
+      if (finalEl) finalEl.hidden = step !== LAST_STEP;
+      if (prevBtnEl) prevBtnEl.disabled = step === 0;
+      const go = el.querySelector('#nrz-confirm');
+      if (go) {
+        go.textContent = step === 0 ? '开始确认 →'
+          : (step === LAST_STEP ? '我已阅读并接受以上规则，继续。' : '下一题 →');
+      }
+      if (stepEl) {
+        stepEl.textContent = '第 ' + (step + 1) + ' / ' + (LAST_STEP + 1) + ' 步 · ' +
+          (step === 0 ? '规则说明' : (step === LAST_STEP ? '最终确认' : '第 ' + step + ' 题 / 共 ' + total + ' 题'));
+      }
+      // 切步回顶：一屏内容本不需要滚动，但若某机字体超大导致超高，至少从顶部开始看
+      if (scrollEl) { try { scrollEl.scrollTop = 0; } catch (e4) {} }
+      const sp3 = document.getElementById('splash');
+      if (sp3) { try { sp3.scrollTop = 0; } catch (e5) {} }
+      refreshProgress();
+    }
     function switchView(showResult) {
       const vq = el.querySelector('#nrz-view-quiz');
       const vr = el.querySelector('#nrz-view-result');
@@ -190,8 +293,9 @@
     function retry() {
       for (let i = 0; i < picks.length; i++) picks[i] = null;
       Array.prototype.forEach.call(el.querySelectorAll('.eqz-opt.is-sel'), function (o) { o.classList.remove('is-sel'); });
-      refreshProgress();
       switchView(false);
+      step = 0; // #1583 一题一屏：重答从「规则说明」重新开始
+      renderStep();
     }
     function confirmRules() {
       const bads = [];
@@ -225,9 +329,16 @@
       toast('已接受本站入站须知，欢迎使用');
       cleanup();
     }
+    // #1583 一题一屏：主按钮兼「下一步」，走到最终确认步才真正提交（按钮常在底部，永不需滚动）
     const btn = el.querySelector('#nrz-confirm');
-    if (btn) btn.addEventListener('click', confirmRules);
-    refreshProgress();
+    if (btn) btn.addEventListener('click', function () {
+      if (step < LAST_STEP) { step++; renderStep(); return; }
+      confirmRules();
+    });
+    if (prevBtnEl) prevBtnEl.addEventListener('click', function () {
+      if (step > 0) { step--; renderStep(); }
+    });
+    renderStep();
   }
 
   // ---------- 模块加载即判定：未通过且开屏在场 → 盖上须知层 ----------

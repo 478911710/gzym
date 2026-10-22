@@ -135,10 +135,23 @@ await clickOpt(0, 0); // 改选 A（单选覆盖，后面 C 组当错答用）
 s2 = await evalJs(GATE);
 ok('B4 单选覆盖：改选 A 后仍只有 1 个选中', s2.selCount === 1 && s2.progress === '已答 1 / 8', s2);
 
+// #1583 一题一屏：主按钮兼「下一步」，提交前必须连点到「最终确认」步再点一次提交
+async function submitAll() {
+  await evalJs(`(function(){
+    var go=document.getElementById('nrz-confirm');
+    for (var i=0;i<40 && go;i++) {
+      if (/接受以上规则/.test(go.textContent||'')) break;
+      go.click();
+    }
+    if (go) go.click();
+    return true;
+  })()`);
+}
+
 // ===== C：漏答＋错答提交 → 结果页 → 重新确认 =====
 console.log('C 漏答/错答提交与重新确认');
 for (let i = 1; i < 8; i++) { if (i !== 4) await clickOpt(i, CORRECT[i]); } // 第2题起全对，第5题(i=4)留空
-await evalJs(`document.getElementById('nrz-confirm').click(); true`);
+await submitAll();
 s = await evalJs(GATE);
 ok('C1 提交后跳结果页', s.resultShown === true);
 ok('C2 报「还有 2 题需要重新确认」', s.resultText.indexOf('还有 2 题需要重新确认') > -1, s.resultText.slice(0, 80));
@@ -152,7 +165,7 @@ ok('C6 重新确认＝清空重答（回答题页、0 选中、进度 0/8）', s
 // ===== D：全对提交 → 放行 =====
 console.log('D 全对提交放行');
 for (let i = 0; i < 8; i++) await clickOpt(i, CORRECT[i]);
-await evalJs(`document.getElementById('nrz-confirm').click(); true`);
+await submitAll();
 s = await evalJs(GATE);
 ok('D1 须知层移除', s.page === false);
 ok('D2 .splash 的 eqz-active 已摘除', s.active === false);
@@ -175,36 +188,59 @@ await navigate(baseUrl + '/index.html');
 s = await evalJs(GATE);
 ok('E3 记录版本更旧（模拟改版）后须知重新出现', s.page === true && s.active === true, s);
 
-// ===== G：滚动态可达性（#1581 用户报「有的手机第 7 题以后刷不出来」）=====
-// 小视口下模拟真实滚动：#1582 起滚动容器上移到 .splash（整页单层滚动），
-// 逐步滑到底后断言第 8 题与最终确认按钮进入可视区，且内层不再自建滚动（防回流成嵌套滚动）。
-console.log('G 滚动到底可达性（390x660 视口 · 整页单层滚动）');
+// ===== G：一题一屏的可达性（#1583 作者要求覆盖全部机型）=====
+// 小视口下不再依赖滚动：断言任何时刻只有一屏内容、连点「下一步」即可走到第 8 题与提交按钮，
+// 且全程 .splash 的 scrollTop 保持 0（＝根本不需要滚动）。
+console.log('G 一题一屏可达性（390x660 视口 · 不依赖滚动）');
 await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 660, deviceScaleFactor: 2, mobile: true });
 await navigate(baseUrl + '/index.html');
 s = await evalJs(GATE);
 ok('G1 小视口下须知层在场', s.page === true && s.active === true);
-const SCROLLINFO = `(function(){
-  var sp=document.getElementById('splash'); if(!sp) return null;
-  var inner=document.getElementById('nrz-scroll');
-  var innerOv=inner?getComputedStyle(inner).overflowY:'';
-  var cls=sp.classList.contains('rules-open');
-  sp.scrollTop = sp.scrollHeight; // 模拟用户一路滑到底
-  var q8=document.querySelectorAll('#entry-rules-page .eqz-q')[7];
-  var btn=document.getElementById('nrz-confirm');
-  var vh=window.innerHeight;
-  function vis(el){ if(!el) return null; var r=el.getBoundingClientRect(); return { top:Math.round(r.top), bottom:Math.round(r.bottom), inView: r.top < vh && r.bottom > 0 }; }
-  return JSON.stringify({ cls:cls, innerOv:innerOv,
-    sh:sp.scrollHeight, ch:sp.clientHeight, maxTop:sp.scrollHeight-sp.clientHeight, gotTop:Math.round(sp.scrollTop),
-    q8:vis(q8), btn:vis(btn), vh:vh });
+const PGINFO = `(function(){
+  var sp=document.getElementById('splash');
+  var go=document.getElementById('nrz-confirm');
+  var intro=document.getElementById('nrz-intro');
+  function qs(){ return Array.prototype.slice.call(document.querySelectorAll('#entry-rules-page .eqz-q[data-i]')); }
+  function visCount(){ return qs().filter(function(q){ return !q.hidden; }).length; }
+  var intro0 = intro && !intro.hidden;
+  var vc0 = visCount();
+  var q8 = document.querySelector('#entry-rules-page .eqz-q[data-i=\\"7\\"]');
+  var n = 0;
+  while (n < 12 && q8 && q8.hidden) { go.click(); n++; }
+  var vh = window.innerHeight;
+  var r8 = q8 ? q8.getBoundingClientRect() : null;
+  var vc1 = visCount();
+  var scrolled = sp ? Math.round(sp.scrollTop) : -1;
+  go.click(); // 进入最终确认步
+  var fin = document.getElementById('nrz-final');
+  var rb = document.getElementById('nrz-confirm').getBoundingClientRect();
+  return JSON.stringify({
+    intro0:intro0, vc0:vc0, steps:n, vc1:vc1, scrolled:scrolled,
+    q8: r8 ? { top:Math.round(r8.top), bottom:Math.round(r8.bottom), inView:(r8.top>=0 && r8.bottom<=vh) } : null,
+    finShown: !!(fin && !fin.hidden),
+    btn: { top:Math.round(rb.top), bottom:Math.round(rb.bottom), inView:(rb.top>=0 && rb.bottom<=vh) },
+    prevEnabled: !document.getElementById('nrz-prev').disabled
+  });
 })()`;
-const g = JSON.parse(await evalJs(SCROLLINFO) || 'null');
-ok('G2 须知页挂 rules-open 且由 .splash 接管滚动（sh>ch＝确有可滚内容）', g && g.cls === true && g.sh > g.ch, g);
-ok('G3 .splash 的 scrollTop 能到达理论最大值', g && g.gotTop >= g.maxTop - 2, g);
-ok('G4 第 8 题滚到底后进入可视区', g && g.q8 && g.q8.inView, g);
-ok('G5 最终确认按钮滚到底后进入可视区', g && g.btn && g.btn.inView, g);
-ok('G6 滚动层高度＝整视口（.splash 撑满，不再被 flex 链切掉一块）', g && g.ch >= g.vh * 0.95, g);
-ok('G7 内层 #nrz-scroll 不再自建滚动（overflow:visible；回流＝嵌套滚动/高度链复发）', g && g.innerOv === 'visible', g);
+const g = JSON.parse(await evalJs(PGINFO) || 'null');
+ok('G2 规则说明步：只有说明可见、8 题全隐藏', g && g.intro0 === true && g.vc0 === 0, g);
+ok('G3 连点「下一步」8 次即到第 8 题（无需滚动）', g && g.steps === 8 && g.vc1 === 1, g);
+ok('G4 第 8 题在可视区内且全程未滚动（scrollTop=0）', g && g.q8 && g.q8.inView && g.scrolled === 0, g);
+ok('G5 最终确认步：提交按钮在可视区（底栏常驻）', g && g.finShown === true && g.btn.inView === true, g);
+ok('G6 「上一步」可用（可回看上一题）', g && g.prevEnabled === true, g);
 await cdp('Emulation.clearDeviceMetricsOverride');
+
+// #1583 页头自检入口：点一下必须真的摊出本机几何数据（这是后续定位现场的唯一依据）
+console.log('I 页头自检入口');
+const diag = JSON.parse(await evalJs(`(function(){
+  var b=document.getElementById('nrz-diag-btn'); if(!b) return JSON.stringify({btn:false});
+  b.click();
+  var p=document.getElementById('nrz-diag');
+  return JSON.stringify({btn:true, shown: !!p && p.hidden===false, text: p?p.textContent:''});
+})()`) || 'null');
+ok('I1 自检按钮在场且点击后展开面板', !!(diag && diag.btn === true && diag.shown === true), diag && { btn: diag.btn, shown: diag.shown });
+ok('I2 面板含真实几何数据（#splash/scrollH/第8题/置底尝试）',
+  !!(diag && /#splash:/.test(diag.text) && /scrollH=/.test(diag.text) && /第8题:/.test(diag.text) && /置底尝试:/.test(diag.text)));
 
 // #1582 强制刷新弹窗的「本版一次性强提醒」通道：用旧构建号页面隔离验证——
 // 该页同目录 version.json 与页面同号（版本比对通道判不出新版），弹窗只可能来自强提醒通道。
