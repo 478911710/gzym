@@ -152,6 +152,12 @@ return sel + ': top=' + Math.round(r.top) + ' bottom=' + Math.round(r.bottom) + 
 ' | pos=' + cs.position + ' height=' + cs.height + ' minH=' + cs.minHeight +
 ' overflowY=' + cs.overflowY + ' flex=' + cs.flex + ' display=' + cs.display;
 }
+function varOf(name) {
+try {
+var q = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+return q || '(未设)';
+} catch (e) { return '?'; }
+}
 if (diagBtn) diagBtn.addEventListener('click', function () {
 const vv = window.visualViewport;
 const sv = document.getElementById('splash-ver');
@@ -179,6 +185,8 @@ const lines = [
 ' | visualViewport: ' + (vv ? Math.round(vv.width) + 'x' + Math.round(vv.height) + ' offTop=' + Math.round(vv.offsetTop) + ' scale=' + vv.scale : '无'),
 'docEl: clientH=' + document.documentElement.clientHeight + ' scrollH=' + document.documentElement.scrollHeight +
 ' | body: clientH=' + document.body.clientHeight + ' scrollH=' + document.body.scrollHeight,
+'变量: --mochi-vv-h=' + varOf('--mochi-vv-h') + ' --mochi-safe-top=' + varOf('--mochi-safe-top') +
+' --mochi-safe-bottom=' + varOf('--mochi-safe-bottom'),
 boxInfo('#splash'),
 boxInfo('#entry-rules-page'),
 boxInfo('#nrz-view-quiz'),

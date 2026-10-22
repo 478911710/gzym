@@ -242,6 +242,53 @@ ok('I1 自检按钮在场且点击后展开面板', !!(diag && diag.btn === true
 ok('I2 面板含真实几何数据（#splash/scrollH/第8题/置底尝试）',
   !!(diag && /#splash:/.test(diag.text) && /scrollH=/.test(diag.text) && /第8题:/.test(diag.text) && /置底尝试:/.test(diag.text)));
 
+// ===== J：#1584 可视高/安全区（作者两台机：①开屏看不见「我已阅读并知晓」 ②须知页只看得到选项、看不到题目）=====
+// J1~J3 针对「页面画进系统状态栏区、env() 恒报 0」的形态（Android 15+ 边缘到边 / 内嵌浏览器）：
+//   须知页顶部必须让开状态栏（题目标题不得被盖住）；开屏高度必须取实测可视高（底栏不得落到可视区外）。
+// J4~J5 针对「整个底部操作区在可视区外」：整页高度＝可视高，且万一内容仍超高，.splash 自身可滚到底。
+console.log('J 可视高 / 安全区（#1584）');
+{
+  // 当前状态＝I 组结束时：须知层开着（390×660）。先量顶部避让：模拟边缘到边把 --mochi-safe-top 写成 31px。
+  const j1 = JSON.parse(await evalJs(`(function(){
+    var d=document.documentElement;
+    var page=document.getElementById('entry-rules-page');
+    d.style.removeProperty('--mochi-safe-top');
+    var before=parseFloat(getComputedStyle(page).paddingTop)||0;
+    d.style.setProperty('--mochi-safe-top','31px');
+    var pad=parseFloat(getComputedStyle(page).paddingTop)||0;
+    var sc=document.getElementById('nrz-scroll');
+    var qTop=sc?Math.round(sc.getBoundingClientRect().top):null;
+    return JSON.stringify({before:before, pad:pad, qTop:qTop});
+  })()`));
+  ok('J1 常态下问卷页顶内边距为 0（--mochi-safe-top 未设＝正常机零变化）', j1 && j1.before === 0, j1);
+  ok('J2 边缘到边（safe-top=31px）下题目标题让开状态栏（滚动区 top ≥ 31）', !!(j1 && j1.pad >= 31 && j1.qTop >= 31), j1);
+
+  // 放行须知 → 刷新 → 开屏重新露出，在 390×400 的矮视口量开屏底栏可达性
+  await evalJs('window.__entryRulesTest.pass(); true');
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 400, deviceScaleFactor: 2, mobile: true });
+  await navigate(baseUrl + '/index.html');
+  await sleep(1200);
+  const j3 = JSON.parse(await evalJs(`(function(){
+    var sp=document.getElementById('splash');
+    var card=document.querySelector('.splash-footcard');
+    var ent=document.getElementById('splash-enter');
+    var vv=window.visualViewport?Math.round(window.visualViewport.height):window.innerHeight;
+    var spH=Math.round(sp.getBoundingClientRect().height);
+    var varH=getComputedStyle(document.documentElement).getPropertyValue('--mochi-vv-h').trim();
+    function r(n){ if(!n) return null; var b=n.getBoundingClientRect(); return {top:Math.round(b.top),bottom:Math.round(b.bottom),h:Math.round(b.height)}; }
+    var c0=r(card), e0=r(ent);
+    var canScroll=sp.scrollHeight-sp.clientHeight;
+    var reached=true;
+    if (c0 && c0.bottom>spH+1) { sp.scrollTop=sp.scrollHeight; reached=(sp.scrollTop>0); c0=r(card); e0=r(ent); }
+    return JSON.stringify({vv:vv, spH:spH, varH:varH, canScroll:canScroll,
+      card:c0, ent:e0, ok1:(c0?c0.bottom<=spH+1:false), ok2:(e0?e0.bottom<=spH+1:false), scrolled:reached});
+  })()`));
+  ok('J3 开屏高度＝实测可视高（不是布局视口）', !!(j3 && j3.varH === j3.vv + 'px' && Math.abs(j3.spH - j3.vv) <= 1), j3);
+  ok('J4 矮视口（390×400）下底部操作卡整块在可视区内（按钮必然可达）', !!(j3 && j3.ok1 === true && j3.card && j3.card.h > 0), j3 && { card: j3.card, ent: j3.ent });
+  ok('J5 内容仍超高时开屏可滚到底（.splash 自身兜底滚动）', !!(j3 && (j3.canScroll <= 0 || j3.scrolled === true)), j3 && { canScroll: j3.canScroll, scrolled: j3.scrolled });
+  await cdp('Emulation.clearDeviceMetricsOverride');
+}
+
 // #1582 强制刷新弹窗的「本版一次性强提醒」通道：用旧构建号页面隔离验证——
 // 该页同目录 version.json 与页面同号（版本比对通道判不出新版），弹窗只可能来自强提醒通道。
 console.log('H 强制刷新弹窗·本版一次性强提醒（旧构建号页面）');
