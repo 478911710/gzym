@@ -35,15 +35,11 @@
 #eqz-view-result { overflow-y: auto; scrollbar-width: none; }
 #eqz-view-result::-webkit-scrollbar { display: none; }
 
-/* #1581（用户报「有的手机第 7 题以后的内容刷不出来」）：
-   ①两层滚动容器删 legacy 动量旗标（-webkit- 前缀那条 touch 惯性开关）——#707/#1411 同族先例：
-     该旗标把容器切进老式滚动路径，部分内核上＝惯性滚动内容裁剪（滚到最后差约一屏出不来），
-     须知页 8 题滚到第 7 题就到底＝症状吻合；现代内核 overflow:auto 默认即动量滚动，删除零损失。
-     勿回流（build.mjs 配 absent 哨兵，同 #707g 口径）。
-   ②.eqz-page 加页面级滚动兜底：个别内核多层 flex 嵌套下 min-height 不传播＝内层 .eqz-scroll
-     拿不到约束，此时 .eqz-view 溢出本层、由本层接管滚动＝内容仍可达；正常内核内层恰好填满、
-     无溢出＝零视觉变化。 */
-.eqz-page { overflow-y: auto; }
+/* #1581：两层滚动容器删 legacy 动量旗标（-webkit- 前缀那条 touch 惯性开关）——#707/#1411 同族先例：
+   该旗标把容器切进老式滚动路径，部分内核上＝惯性滚动内容裁剪（滚到最后差约一屏出不来）。
+   现代内核 overflow:auto 默认即动量滚动，删除零损失。勿回流（build.mjs 配 absent 哨兵，同 #707g 口径）。
+   注：#1582 起「滚不到底」的根治改成须知页专属的整页单层滚动（见本文件末尾 #1582 段），
+   本文件其余 .eqz-* 规则保持原样——24 题问卷（entry-quiz）已在真机跑通，不再动它的高度链。 */
 
 .eqz-scroll {
   min-height: 0; overflow-y: auto;
@@ -123,3 +119,27 @@
   white-space: normal; word-break: break-word;
 }
 .eqz-rs-n { font-weight: 800; color: var(--danger-ink, #a32d2d); margin-right: 6px; }
+
+/* ===== #1582（2026-10-22 复报「还有手机看不到第 8 题」，同机 24 题问卷却正常）=====
+   24 题问卷没这症状 ＝ 不是 .eqz-* 那套 flex 高度链本身有问题，而是【出现时机】不同：
+     24 题问卷在用户滑动开屏之后才盖上来（地址栏收起、可视区变高、.splash 已滚过一轮）；
+     须知页是开屏一出现就盖（地址栏还在、.splash 还未滚动）。
+   移动端默认浏览器/webview 上 position:fixed; inset:0 是相对 layout viewport 定高的（含地址栏
+   占位区），再叠上多层 flex 的 min-height 不传播 → 内层 .eqz-scroll 拿不到约束、整页没有
+   页面级滚动容器 → 底部（第 8 题＋确认按钮）落在可视区外且永远滚不到。
+   方案：须知页不复用内层滚动，改成【.splash 整页单层滚动 + 内容按普通文档流排布】——
+   不依赖任何高度传递与视口 math，任何内核只要 overflow:auto ＋正常流就能滚到底。
+   作用域严格限定 .splash.rules-open（仅 entry-rules.js 会挂），24 题问卷零影响。
+   勿把本段选择器删掉「统一回 .eqz-page」——那等于把 24 题问卷的已知良好形态也重新绑上高度链。 */
+.splash.rules-open { overflow-y: auto; }
+.splash.rules-open > #entry-rules-page { flex: none; height: auto; min-height: 0; }
+.splash.rules-open > #entry-rules-page > #nrz-view-quiz { flex: none; height: auto; min-height: 0; }
+.splash.rules-open #nrz-view-quiz > #nrz-scroll { flex: none; height: auto; min-height: 0; overflow: visible; }
+/* 结果页同样走整页滚动（原标题只用 #eqz-view-result 一条，须知页没有对应规则＝结果页也曾无滚动） */
+.splash.rules-open > #entry-rules-page > #nrz-view-result { flex: none; height: auto; min-height: 0; overflow: visible; }
+/* #1582 底部队列余量：整页滚动到最底时内容贴 .splash 下沿，而移动端下沿可能被地址栏盖住
+   （layout viewport 与可视区的差值），留 40px 让「最终确认」按钮永远露在遮挡之上。 */
+.splash.rules-open > #entry-rules-page { padding-bottom: 40px; }
+/* #1582 底部队列余量：整页滚动到最底时内容贴 .splash 下沿，而移动端下沿可能被地址栏盖住
+   （layout viewport 与可视区的差值），留 40px 让「最终确认」按钮永远露在遮挡之上。 */
+.splash.rules-open > #entry-rules-page { padding-bottom: 40px; }

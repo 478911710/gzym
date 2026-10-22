@@ -36,7 +36,8 @@ if (!jsFiles.includes('entry-rules.js')) { console.error('✗ entry-rules.js 未
 let testHtml = readFileSync(join(root, 'src/template.html'), 'utf8');
 testHtml = testHtml.replace('/*__STYLES__*/', cssFiles.map((f) => readFileSync(join(root, 'src/css', f), 'utf8')).join('\n'));
 testHtml = testHtml.replace('/*__SCRIPTS__*/', jsFiles.map((f) => '(function () { try {\n' + readFileSync(join(root, 'src/js', f), 'utf8') + '\n} catch (__e) { try { console.error("[JS] ' + f + '", __e && __e.message || __e); } catch (x) {} if (window.__jsErrors) window.__jsErrors.push(String(__e && __e.message || __e)); } })();').join('\n'));
-testHtml = testHtml.split('__BUILD_INFO__').join('verify-entry-rules').split('__BUILD_TS__').join(String(Date.now())).split('__APP_VERSION__').join('v0.0.0');
+const probeTs = Date.now();
+testHtml = testHtml.split('__BUILD_INFO__').join('verify-entry-rules').split('__BUILD_TS__').join(String(probeTs)).split('__APP_VERSION__').join('v0.0.0');
 const tmpRoot = join(process.env.TEMP || '/tmp', 'mochi-entry-rules-' + Date.now());
 mkdirSync(tmpRoot, { recursive: true });
 writeFileSync(join(tmpRoot, 'index.html'), testHtml);
@@ -175,29 +176,67 @@ s = await evalJs(GATE);
 ok('E3 记录版本更旧（模拟改版）后须知重新出现', s.page === true && s.active === true, s);
 
 // ===== G：滚动态可达性（#1581 用户报「有的手机第 7 题以后刷不出来」）=====
-// 小视口下模拟真实滚动：逐步滚 .eqz-scroll 到底，断言第 8 题与最终确认按钮进入可视区。
-console.log('G 滚动到底可达性（390x660 视口）');
+// 小视口下模拟真实滚动：#1582 起滚动容器上移到 .splash（整页单层滚动），
+// 逐步滑到底后断言第 8 题与最终确认按钮进入可视区，且内层不再自建滚动（防回流成嵌套滚动）。
+console.log('G 滚动到底可达性（390x660 视口 · 整页单层滚动）');
 await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 660, deviceScaleFactor: 2, mobile: true });
 await navigate(baseUrl + '/index.html');
 s = await evalJs(GATE);
 ok('G1 小视口下须知层在场', s.page === true && s.active === true);
 const SCROLLINFO = `(function(){
-  var sc=document.getElementById('nrz-scroll'); if(!sc) return null;
-  sc.scrollTop = sc.scrollHeight; // 模拟用户一路滑到底
+  var sp=document.getElementById('splash'); if(!sp) return null;
+  var inner=document.getElementById('nrz-scroll');
+  var innerOv=inner?getComputedStyle(inner).overflowY:'';
+  var cls=sp.classList.contains('rules-open');
+  sp.scrollTop = sp.scrollHeight; // 模拟用户一路滑到底
   var q8=document.querySelectorAll('#entry-rules-page .eqz-q')[7];
   var btn=document.getElementById('nrz-confirm');
   var vh=window.innerHeight;
   function vis(el){ if(!el) return null; var r=el.getBoundingClientRect(); return { top:Math.round(r.top), bottom:Math.round(r.bottom), inView: r.top < vh && r.bottom > 0 }; }
-  return JSON.stringify({ sh:sc.scrollHeight, ch:sc.clientHeight, maxTop:sc.scrollHeight-sc.clientHeight, gotTop:Math.round(sc.scrollTop),
+  return JSON.stringify({ cls:cls, innerOv:innerOv,
+    sh:sp.scrollHeight, ch:sp.clientHeight, maxTop:sp.scrollHeight-sp.clientHeight, gotTop:Math.round(sp.scrollTop),
     q8:vis(q8), btn:vis(btn), vh:vh });
 })()`;
 const g = JSON.parse(await evalJs(SCROLLINFO) || 'null');
-ok('G2 滚动容器存在且内容超高（sh>ch＝确有可滚内容）', g && g.sh > g.ch, g);
-ok('G3 scrollTop 能到达理论最大值', g && g.gotTop >= g.maxTop - 2, g);
+ok('G2 须知页挂 rules-open 且由 .splash 接管滚动（sh>ch＝确有可滚内容）', g && g.cls === true && g.sh > g.ch, g);
+ok('G3 .splash 的 scrollTop 能到达理论最大值', g && g.gotTop >= g.maxTop - 2, g);
 ok('G4 第 8 题滚到底后进入可视区', g && g.q8 && g.q8.inView, g);
 ok('G5 最终确认按钮滚到底后进入可视区', g && g.btn && g.btn.inView, g);
-ok('G6 滚动可视区高度正常（≥视口 55%，防 foot 被 env 异常撑爆挤扁）', g && g.ch >= g.vh * 0.55, g);
+ok('G6 滚动层高度＝整视口（.splash 撑满，不再被 flex 链切掉一块）', g && g.ch >= g.vh * 0.95, g);
+ok('G7 内层 #nrz-scroll 不再自建滚动（overflow:visible；回流＝嵌套滚动/高度链复发）', g && g.innerOv === 'visible', g);
 await cdp('Emulation.clearDeviceMetricsOverride');
+
+// #1582 强制刷新弹窗的「本版一次性强提醒」通道：用旧构建号页面隔离验证——
+// 该页同目录 version.json 与页面同号（版本比对通道判不出新版），弹窗只可能来自强提醒通道。
+console.log('H 强制刷新弹窗·本版一次性强提醒（旧构建号页面）');
+{
+  const OLD_TS = 1792655277595; // 2026-10-22 15:47 那一版（#1581）的构建 ts
+  const oldDir = join(tmpRoot, 'old');
+  mkdirSync(oldDir, { recursive: true });
+  writeFileSync(join(oldDir, 'index.html'), testHtml.split('data-build-ts="' + probeTs + '"').join('data-build-ts="' + OLD_TS + '"'));
+  writeFileSync(join(oldDir, 'version.json'), JSON.stringify({ ts: OLD_TS, info: 'probe-old' }));
+  await cdp('Runtime.evaluate', { expression: "try{localStorage.removeItem('xy-home-v2:update-remind-force')}catch(e){}" });
+  await navigate(baseUrl + '/old/index.html');
+  const h1 = JSON.parse(await evalJs(`(function(){
+    var sv=document.getElementById('splash-ver');
+    var w=document.getElementById('update-remind-wrap');
+    var d=w?w.querySelector('.ur-d'):null;
+    return JSON.stringify({ ts: sv?sv.getAttribute('data-build-ts'):null,
+      shown: !!w, btn: !!(w&&w.querySelector('.ur-go')),
+      titled: !!(w&&/2026\\.10\\.22/.test((w.querySelector('.ur-t')||{}).textContent||'')),
+      bodyHit: !!(d&&/第 8 题/.test(d.textContent||'')) });
+  })()`));
+  ok('H1 旧构建号页面弹出强制刷新弹窗（不依赖 version.json 比对）', h1 && h1.ts === String(OLD_TS) && h1.shown === true, h1);
+  ok('H2 弹窗标题/按钮指向 2026.10.22 且正文提到第 8 题修复', h1 && h1.titled === true && h1.bodyHit === true && h1.btn === true, h1);
+  const h2 = await evalJs("(function(){try{return localStorage.getItem('xy-home-v2:update-remind-force')}catch(e){return null}})()");
+  ok('H3 强提醒标记落盘（本版只提醒一次）', h2 === '2026-10-22d', h2);
+  // H4 同会话重复调用不叠加第二层（弹窗自带 done 去重；这里不重载页面——探针对同一 URL 连续导航不稳）
+  const h3 = JSON.parse(await evalJs(`(function(){
+    window.mochiUpdateRemindShow && window.mochiUpdateRemindShow();
+    return JSON.stringify({ n: document.querySelectorAll('#update-remind-wrap').length });
+  })()`));
+  ok('H4 重复调用不叠加第二层弹窗（同会话去重）', h3 && h3.n === 1, h3);
+}
 
 console.log('\n结果：' + pass + ' 通过 / ' + fail + ' 失败');
 chrome.kill();

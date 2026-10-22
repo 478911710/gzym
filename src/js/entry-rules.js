@@ -92,7 +92,12 @@
 
   function cleanup() {
     const sp = document.getElementById('splash');
-    if (sp) sp.classList.remove('eqz-active');
+    if (sp) {
+      sp.classList.remove('eqz-active');
+      // #1582：整页单层滚动是须知页专属形态，摘层时必须一并摘掉（否则开屏/进入后残留可滚动）
+      sp.classList.remove('rules-open');
+      try { sp.scrollTop = 0; } catch (e0) {}
+    }
     if (pageEl && pageEl.parentNode) pageEl.parentNode.removeChild(pageEl);
     pageEl = null;
   }
@@ -144,6 +149,8 @@
 
     sp.appendChild(el);
     sp.classList.add('eqz-active');
+    // #1582：须知页改「.splash 整页单层滚动」——不依赖 flex 高度传递（见 entry-quiz.css 末尾 #1582 段）
+    sp.classList.add('rules-open');
     pageEl = el;
 
     const progressEl = el.querySelector('#nrz-progress');
@@ -175,6 +182,9 @@
       if (vr) vr.hidden = !showResult;
       el.classList.toggle('is-result', !!showResult);
       if (scrollEl) scrollEl.scrollTop = 0;
+      // #1582：滚动容器已上移到 .splash——切视图必须把整页滚回顶部，否则结果页/重答会停在上一次的位置
+      const sp2 = document.getElementById('splash');
+      if (sp2) { try { sp2.scrollTop = 0; } catch (e3) {} }
     }
     // 「重新确认」＝清空全部已选、从头再答（不标对错、不泄露答案，同 #1556 口径）
     function retry() {

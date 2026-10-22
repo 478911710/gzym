@@ -80,7 +80,11 @@ try { if (window.toast) { window.toast(msg); return; } } catch (e) {}
 let pageEl = null;
 function cleanup() {
 const sp = document.getElementById('splash');
-if (sp) sp.classList.remove('eqz-active');
+if (sp) {
+sp.classList.remove('eqz-active');
+sp.classList.remove('rules-open');
+try { sp.scrollTop = 0; } catch (e0) {}
+}
 if (pageEl && pageEl.parentNode) pageEl.parentNode.removeChild(pageEl);
 pageEl = null;
 }
@@ -126,6 +130,7 @@ rows +
 '<div class="eqz-view" id="nrz-view-result" hidden></div>';
 sp.appendChild(el);
 sp.classList.add('eqz-active');
+sp.classList.add('rules-open');
 pageEl = el;
 const progressEl = el.querySelector('#nrz-progress');
 function refreshProgress() {
@@ -154,6 +159,8 @@ if (vq) vq.hidden = showResult;
 if (vr) vr.hidden = !showResult;
 el.classList.toggle('is-result', !!showResult);
 if (scrollEl) scrollEl.scrollTop = 0;
+const sp2 = document.getElementById('splash');
+if (sp2) { try { sp2.scrollTop = 0; } catch (e3) {} }
 }
 function retry() {
 for (let i = 0; i < picks.length; i++) picks[i] = null;
