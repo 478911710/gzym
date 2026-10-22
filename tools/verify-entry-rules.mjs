@@ -156,7 +156,7 @@ s = await evalJs(GATE);
 ok('D1 须知层移除', s.page === false);
 ok('D2 .splash 的 eqz-active 已摘除', s.active === false);
 ok('D3 开屏公告恢复可见', s.boxHidden === false);
-ok('D4 放行根键落盘（v=2026-10-22）', typeof s.passKey === 'string' && s.passKey.indexOf('"v":"2026-10-22"') > -1, s.passKey);
+ok('D4 放行根键落盘（v=2026-10-22b）', typeof s.passKey === 'string' && s.passKey.indexOf('"v":"2026-10-22b"') > -1, s.passKey);
 ok('F1 24题问卷闸未被放行（mochiEntryQuizPassed()===false）', s.quiz24Passed === false, s.quiz24Passed);
 ok('F2 24题问卷闸本体仍在（mochiEntryQuizGate）', s.quiz24Gate === true);
 ok('F3 24题问卷放行键未被误写', s.quiz24Key === null, s.quiz24Key);
