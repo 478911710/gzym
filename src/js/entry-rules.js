@@ -1,0 +1,240 @@
+/* ===== 功能：入站须知（开屏公告前的一次性入站确认层 · 答对全部题并接受规则才能看公告） =====
+   归属：开屏/入口验证（AI-B 域）。build.mjs jsFiles 插在 entry-quiz.js 之后加载。
+   触发：模块加载即判定——开屏（#splash）在场且本机未通过时，立即在 .splash 内盖上整页
+        须知（.eqz-active 收起 .splash-box/.splash-footcard，同 entry-quiz 的同层方案）；
+        通过后移除本层，开屏公告照常出现。clock.js 的进入流程（含 #1550 的 24 题入站
+        问卷闸 mochiEntryQuizGate）一字未动，两道闸完全独立。
+   页面：作为 .splash 容器内的整页子节点（复用 entry-quiz.css 的 .eqz-* 样式，零新 CSS），
+        与开屏同层（.splash 的 z-index 999），不新建遮罩、不改任何图层/z-index。
+        没有返回/关闭入口：不接受须知＝无法查看公告（想离开直接关掉页面）。
+   数据：全局根键 xy-home-v2:rules-notice-pass（存 {t:时间戳, v:须知版本}；已进 contacts.js EXCLUDE）。
+        全对并点「最终确认」＝本机永久放行；须知内容改版（RULES_VER 变化）后自动失效＝重新确认一次。
+        放行判定同 #1572 口径：记录版本 ≥ 本页版本即放行（防 SW cache-first 版本乒乓反复重答）。
+   内容：作者 2026-10-22 直派《本站入站须知》原文——规则声明两段＋「入站氛围确认」8 题单选
+        （答案 1B 2B 3B 4A 5C 6A 7B 8A，页面明文不含答案）＋最终确认按钮。
+   自动化：无头/回归环境（webdriver / Headless UA）直接放行，避免回归脚本被挡在公告之外。
+   ====================================================== */
+(function () {
+  'use strict';
+  const G = 'xy-home-v2';
+  const K_PASS = 'rules-notice-pass';
+  // 须知版本：内容改动后递增（记录版本 < 本页版本＝需重新确认一次）
+  const RULES_VER = '2026-10-22';
+  const IS_AUTOMATION = (typeof navigator !== 'undefined') &&
+    (navigator.webdriver === true || /Headless/i.test(String(navigator.userAgent)));
+
+  // ---------- 存储（根命名空间，同 entry-quiz.js 的 read/write 口径） ----------
+  function gGet(k) {
+    try { const v = window.xyStore ? window.xyStore(G).get(k) : null; if (v !== null && v !== undefined) return v; } catch (e) {}
+    try { return localStorage.getItem(G + ':' + k); } catch (e2) { return null; }
+  }
+  function gSet(k, v) {
+    try { if (window.xyStore) window.xyStore(G).set(k, v); else localStorage.setItem(G + ':' + k, v); }
+    catch (e) { try { localStorage.setItem(G + ':' + k, v); } catch (e2) {} }
+  }
+  // 版本比较（同 entry-quiz.js quizVerCmp：'YYYY-MM-DD' + 可选小尾巴，日期段先比、尾巴字典序）
+  function verCmp(a, b) {
+    const sa = String(a == null ? '' : a), sb = String(b == null ? '' : b);
+    if (sa === sb) return 0;
+    const ma = sa.match(/^(\d{4}-\d{2}-\d{2})(.*)$/), mb = sb.match(/^(\d{4}-\d{2}-\d{2})(.*)$/);
+    if (!ma || !mb) return sa > sb ? 1 : -1;
+    if (ma[1] !== mb[1]) return ma[1] > mb[1] ? 1 : -1;
+    const ta = ma[2] || '', tb = mb[2] || '';
+    if (ta === tb) return 0;
+    return ta > tb ? 1 : -1;
+  }
+  // 本机已通过本版须知？（记录版本 ≥ 本页版本即放行）
+  function passed() {
+    if (IS_AUTOMATION) return true;
+    try {
+      const raw = gGet(K_PASS);
+      if (!raw || String(raw).charAt(0) !== '{') return false;
+      const o = JSON.parse(raw);
+      if (!o || typeof o.v !== 'string' || !o.v) return false;
+      return verCmp(o.v, RULES_VER) >= 0;
+    } catch (e) { return false; }
+  }
+  function markPassed() { gSet(K_PASS, JSON.stringify({ t: Date.now(), v: RULES_VER })); }
+
+  // ---------- 须知与题库（作者原文；全部单选，a=正确项下标） ----------
+  const RULE_PARA1 = '本站是个人维护的免费站点。为了维护良好的使用体验，请遵守以下基本规则：分享链接需注明作者署名，禁止将本站与其他站点进行对比拉踩，禁止泄露问卷答案和开屏密码。';
+  const RULE_PARA2 = '很多人觉得免费就不该有规矩。但这是个人花心血做的同好自留地。任何圈子，人一多、风气一杂，原本那种安静稳定的体验就毁了。规则和门槛的存在，只是为了保护正常使用的人能有个好环境。如果觉得规矩多、嫌麻烦，说明这里可能不适合你，请安静离开。继续即视为接受。';
+  const QUESTIONS = [
+    { q: '这个网站免费给你用，但它是作者花钱花时间做的。你平时会怎么使用？',
+      o: ['随便用用，反正不要钱', '正常使用，按站内规则来', '免费的东西还定规矩，用的人多了作者自己就该受着'], a: 1 },
+    { q: '作者花了大量时间精力维护这个网站，你对此的态度是？',
+      o: ['关我什么事', '知道维护不容易，会正常配合'], a: 1 },
+    { q: '你认同「免费的东西也要有底线」吗？',
+      o: ['没想过', '认同，免费也有基本规则', '不认同，都免费了还要求这要求那'], a: 1 },
+    { q: '你觉得网站设置「门槛」存在的意义是什么？',
+      o: ['让合适的人留下，让不合适的人离开', '故意不让人用', '显得自己很特别'], a: 0 },
+    { q: '如果有人建议你「不用管规则直接进」，你会？',
+      o: ['有这种好事？怎么进', '无所谓，能进就行', '还是按规则来，别给作者添麻烦'], a: 2 },
+    { q: '本站设门槛，是为了保护原本同频的氛围。你更希望这里的未来是？',
+      o: ['保持稳定长久，大家安安静静、开开心心地用', '人越多越好，越热闹越乱才好玩', '无所谓，反正我只是个过客'], a: 0 },
+    { q: '你会拿一个网站去踩另一个网站吗？大家都是为爱发电免费做的，都是心血。',
+      o: ['看情况，好用就夸，不好用就踩', '不会，没必要比较', '不好用就踩，反正言论自由，踩了又怎样'], a: 1 },
+    { q: '开屏已声明：本站不适合未成年人，且需要遵守一定规则。如果觉得规矩多、嫌麻烦，建议慎重使用。你是否已了解？',
+      o: ['了解，我愿意遵守规则并对自己负责', '没注意，跳过了', '了解，但我觉得太麻烦了'], a: 0 }
+  ];
+
+  // ---------- 工具 ----------
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function toast(msg) {
+    try { if (window.toast) { window.toast(msg); return; } } catch (e) {}
+  }
+
+  let pageEl = null;
+
+  function cleanup() {
+    const sp = document.getElementById('splash');
+    if (sp) sp.classList.remove('eqz-active');
+    if (pageEl && pageEl.parentNode) pageEl.parentNode.removeChild(pageEl);
+    pageEl = null;
+  }
+
+  // 在 .splash 内盖整页须知（复用 .eqz-* 样式与 .eqz-active 收起机制，同 entry-quiz 同层方案）
+  function open() {
+    const sp = document.getElementById('splash');
+    if (!sp) return; // 没有开屏（已在应用内）→ 不拦
+    if (pageEl && pageEl.parentNode) return; // 已打开则不重绘
+
+    const total = QUESTIONS.length;
+    // 零表单控件（同 #1576 口径）：选项本体纯 button，选中状态全由 picks 管，页面里没有 input
+    const picks = QUESTIONS.map(function () { return null; });
+    let rows = '';
+    QUESTIONS.forEach(function (it, i) {
+      let opts = '';
+      it.o.forEach(function (txt, j) {
+        opts += '<button type="button" class="eqz-opt eqz-radio" data-i="' + i + '" data-j="' + j + '">' +
+          '<span class="eqz-opt-t">' + esc(txt) + '</span></button>';
+      });
+      rows += '<div class="eqz-q" data-i="' + i + '">' +
+        '<div class="eqz-qh"><span class="eqz-idx">' + (i + 1) + '.</span>' +
+        '<span class="eqz-tag">单选</span>' + esc(it.q) + '</div>' +
+        opts + '</div>';
+    });
+
+    const el = document.createElement('div');
+    el.className = 'eqz-page';
+    el.id = 'entry-rules-page';
+    el.innerHTML =
+      '<div class="eqz-view" id="nrz-view-quiz">' +
+      '<div class="eqz-scroll" id="nrz-scroll">' +
+      '<div class="eqz-head">' +
+      '<div class="eqz-title">本站入站须知</div>' +
+      '<div class="eqz-sub">' + esc(RULE_PARA1) + '</div>' +
+      '<div class="eqz-sub">' + esc(RULE_PARA2) + '</div>' +
+      '<div class="eqz-sub">完成下面「入站氛围确认」的全部题目并接受规则，即可继续进入开屏公告。本确认只需完成一次：通过后本机会记住，以后打开不再出现（仅当须知内容更新后才会重新出现一次）。</div>' +
+      '</div>' +
+      rows +
+      '<div class="eqz-q"><div class="eqz-qh"><span class="eqz-idx">最终确认</span></div>' +
+      '<div class="eqz-sub">我已阅读并接受以上规则。点击下方按钮提交确认，全部符合须知要求即可继续进入开屏公告。</div></div>' +
+      '</div>' +
+      '<div class="eqz-foot">' +
+      '<div class="eqz-progress" id="nrz-progress">已答 0 / ' + total + '</div>' +
+      '<div class="eqz-note">作答过程不显示对错；提交后如未全部符合要求，会告知哪些题需要重新确认（页面不会泄露答案）。</div>' +
+      '<button type="button" class="eqz-btn" id="nrz-confirm">我已阅读并接受以上规则，继续。</button>' +
+      '</div></div>' +
+      '<div class="eqz-view" id="nrz-view-result" hidden></div>';
+
+    sp.appendChild(el);
+    sp.classList.add('eqz-active');
+    pageEl = el;
+
+    const progressEl = el.querySelector('#nrz-progress');
+    function refreshProgress() {
+      let n = 0;
+      picks.forEach(function (p) { if (p !== null) n++; });
+      if (progressEl) progressEl.textContent = '已答 ' + n + ' / ' + total;
+    }
+    // 点选委托（同 entry-quiz：单选覆盖，重点已选项不抖动）
+    el.addEventListener('click', function (e) {
+      const o = e.target && e.target.closest ? e.target.closest('.eqz-opt') : null;
+      if (!o || !el.contains(o)) return;
+      const i = parseInt(o.getAttribute('data-i'), 10);
+      const j = parseInt(o.getAttribute('data-j'), 10);
+      if (!QUESTIONS[i] || isNaN(i) || isNaN(j)) return;
+      if (picks[i] === j) return;
+      picks[i] = j;
+      Array.prototype.forEach.call(o.parentNode.querySelectorAll('.eqz-opt'), function (s) {
+        s.classList.toggle('is-sel', s === o);
+      });
+      refreshProgress();
+    });
+
+    const scrollEl = el.querySelector('#nrz-scroll');
+    function switchView(showResult) {
+      const vq = el.querySelector('#nrz-view-quiz');
+      const vr = el.querySelector('#nrz-view-result');
+      if (vq) vq.hidden = showResult;
+      if (vr) vr.hidden = !showResult;
+      el.classList.toggle('is-result', !!showResult);
+      if (scrollEl) scrollEl.scrollTop = 0;
+    }
+    // 「重新确认」＝清空全部已选、从头再答（不标对错、不泄露答案，同 #1556 口径）
+    function retry() {
+      for (let i = 0; i < picks.length; i++) picks[i] = null;
+      Array.prototype.forEach.call(el.querySelectorAll('.eqz-opt.is-sel'), function (o) { o.classList.remove('is-sel'); });
+      refreshProgress();
+      switchView(false);
+    }
+    function confirmRules() {
+      const bads = [];
+      QUESTIONS.forEach(function (it, i) {
+        if (picks[i] === null) bads.push({ n: i + 1, empty: true });
+        else if (picks[i] !== it.a) bads.push({ n: i + 1, empty: false });
+      });
+      const vr = el.querySelector('#nrz-view-result');
+      if (!vr) return;
+      if (bads.length) {
+        let list = '';
+        bads.forEach(function (b) {
+          list += '<div class="eqz-rs-li"><span class="eqz-rs-n">第 ' + b.n + ' 题</span>' +
+            (b.empty ? '未作答' : '单选 · 本题只有 1 个正确答案') + '</div>';
+        });
+        vr.innerHTML =
+          '<div class="eqz-rs eqz-rs-bad">' +
+          '<div class="eqz-rs-t">还有 ' + bads.length + ' 题需要重新确认</div>' +
+          '<div class="eqz-rs-d">作答过程不显示对错，结果在这里统一告知。以下题目未作答或与须知要求不符（页面不会泄露答案，请按须知内容重新确认）：</div>' +
+          '<div class="eqz-rs-list">' + list + '</div>' +
+          '<div class="eqz-rs-d">点「重新确认」会清空全部已选、从头再答。</div>' +
+          '<button type="button" class="eqz-btn" id="nrz-retry">重新确认</button>' +
+          '</div>';
+        const rt = vr.querySelector('#nrz-retry');
+        if (rt) rt.addEventListener('click', retry);
+        switchView(true);
+        return;
+      }
+      // 全对 → 接受须知：本机永久放行，移除本层，开屏公告照常出现
+      markPassed();
+      toast('已接受本站入站须知，欢迎使用');
+      cleanup();
+    }
+    const btn = el.querySelector('#nrz-confirm');
+    if (btn) btn.addEventListener('click', confirmRules);
+    refreshProgress();
+  }
+
+  // ---------- 模块加载即判定：未通过且开屏在场 → 盖上须知层 ----------
+  function boot() {
+    try {
+      if (passed()) return;
+      if (!document.getElementById('splash')) return;
+      open();
+    } catch (e) { /* 任何异常都不阻塞开屏本身 */ }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  window.__entryRulesReady = true;
+  // 无头/验证入口（tools/verify-*.mjs 用）
+  window.__entryRulesTest = {
+    ver: RULES_VER,
+    list: function () { return QUESTIONS.map(function (it) { return { q: it.q, n: it.o.length, a: it.a }; }); },
+    reset: function () { try { localStorage.removeItem(G + ':' + K_PASS); } catch (e) {} },
+    pass: function () { markPassed(); }
+  };
+})();

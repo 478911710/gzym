@@ -186,6 +186,9 @@
     // #1550 入站问卷（entry-quiz.js）本机放行标记：全局根键（不随联系人隔离），
     // 防 migrateLegacy 当旧顶层业务键迁进 default 并删根键（否则每次刷新都要重答 23 题）
     'entry-quiz-pass',
+    // #1578 入站须知（entry-rules.js）本机放行标记：全局根键（不随联系人隔离），
+    // 防 migrateLegacy 当旧顶层业务键迁进 default 并删根键（否则每次刷新都要重新确认须知）
+    'rules-notice-pass',
     // #319 防未成年人锁解锁状态（card-lock.js）：全局根键（不随联系人隔离），闸门
     // isOpen 只读根键——此前漏排除，解锁后刷新被 migrateLegacy 当旧顶层业务键迁进
     // default 并删根键 → 永远读不到 'open'，闸门全锁（用户：输对密码刷新后毫无变化）
