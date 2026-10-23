@@ -1000,6 +1000,9 @@ const FIX_SENTINELS = [
   { name: '#1582 须知页滚动作用域只挂 rules-open（entry-rules.js 打开时加、cleanup 时摘；删掉＝整页滚动不生效）', file: 'js/entry-rules.js', needle: "sp.classList.add('rules-open');" },
   { name: '#1582 强制刷新弹窗·本版一次性强提醒（作者直派「必定更新刷新」；删掉＝只能靠 version.ts 比对，旧缓存用户可能永远收不到提醒）', file: 'js/update-remind.js', needle: 'function forceOnce()' },
   { name: '#1583 须知页自检入口（作者「别再猜」：页头一点即出本机真实几何数据可复制回传；删掉＝再出同类报障只能继续猜）', file: 'js/entry-rules.js', needle: "el.querySelector('#nrz-diag-btn')" },
+  { name: '#1585 须知放行记录三路冗余·cookie 通道（LS 写不进/被清的机器上唯一能同步命中的一路；删掉＝那些机型每次重开都要重答）', file: 'js/entry-rules.js', needle: "const CK = 'mochi_rnp';" },
+  { name: '#1585 开层前先异步问库（同步读空≠没记录：启动回填比本模块晚，记录只在 IDB 的机器会天天重答；删掉＝回到原 bug）', file: 'js/entry-rules.js', needle: "window.idbGet(G + ':' + K_PASS)" },
+  { name: '#1585 证据迟到时自动收层（已盖层但库里证明答过，且用户还没动过选项＝当场摘掉，不让人白答）', file: 'js/entry-rules.js', needle: 'pageEl.__untouched' },
   { name: '#1582 强提醒标记进 migrateLegacy 排除清单（update-remind-force 全局根键不被迁走/删根键，否则每次打开都重复弹）', file: 'js/contacts.js', needle: "'update-remind-force'," },
   // ==== 2026-10-22 #1584（作者两台实机报障：①「开屏完全看不见底部的【我已阅读并知晓】，无法点击」；
   //   ②入站问卷截图只有三个选项、看不到题目「完全无法答题」）。同一族根因＝开屏/须知整页层不认
@@ -1027,7 +1030,7 @@ const FIX_SENTINELS = [
   { name: '#1571 问卷选中状态由 picks 管（单选覆盖 picks[i] = [j]；#1576 重锚＝判分/进度/重答不再读 :checked，删掉状态机＝答题失效）', file: 'js/entry-quiz.js', needle: 'picks[i] = [j];' },
   { name: '#1572 问卷放行判定改版本比较（记录版本 ≥ 本页版本即放行；删掉＝SW 旧缓存页版本乒乓，答对过还反复弹问卷重答）', file: 'js/entry-quiz.js', needle: 'quizVerCmp(o.v, QUIZ_VER) >= 0' },
   { name: '#1573 更新提醒弹窗接口（pwa.js 检出旧缓存包时调起；删掉＝弹窗永远不出现，旧包用户不知道要刷新）', file: 'js/update-remind.js', needle: 'window.mochiUpdateRemindShow = function' },
-  { name: '#1573 更新提醒弹窗文案（#1579 起随部署升版 2026.10.22；删掉＝弹窗没有说明内容）', file: 'js/update-remind.js', needle: '强制刷新更新至2026.10.22' },
+  { name: '#1573 更新提醒弹窗文案（#1579 起随部署升版 2026.10.22；删掉＝弹窗没有说明内容）', file: 'js/update-remind.js', needle: '强制刷新更新至2026.10.23' },
   { name: '#1573 pwa.js 检出线上比本页新时调起更新提醒弹窗（删掉＝旧缓存页用户收不到刷新提醒；defer 就绪短重试为逻辑锚）', file: 'js/pwa.js', needle: 'const urShow = window.mochiUpdateRemindShow;' },
   { name: '#1577a 弹窗刷新态自管（点刷新即时反馈＋自盯 PRECACHE_DONE 补刀 reload＋185s 超时卡内告知；删＝点刷新零反馈、下载失败时弹窗无解释地永远挂着）', file: 'js/update-remind.js', needle: "e.data.type === 'PRECACHE_DONE'" },
   { name: '#1577b 弹窗刷新提示文案（约 5.6MB／弱网一两分钟／刷完可能还是旧版要再刷；删＝用户不知道刷新要等多久、卡旧版以为坏了）', file: 'js/update-remind.js', needle: '刷新后进来还是旧版' },

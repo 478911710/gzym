@@ -183,10 +183,43 @@ ok('E1 刷新后须知不再出现', s.page === false && s.active === false);
 ok('E2 刷新后公告直接可见', s.boxHidden === false);
 // 模拟「须知改版」：写入更旧版本记录（LS＋IDB 双写；reset 只清 LS 会被 idbRestore 从 IDB 回填，
 // 与 entry-quiz 的 reset 同一口径）。记录版本 < 本页版本＝拦下重答（#1572 版本比较语义）。
-await evalJs(`(function(){var old=JSON.stringify({t:Date.now(),v:'2026-01-01'});try{if(window.xyStore)window.xyStore('xy-home-v2').set('rules-notice-pass',old);}catch(e){}try{localStorage.setItem('xy-home-v2:rules-notice-pass',old);}catch(e){}return true;})()`);
+// #1585：cookie 也是放行记录的一路，模拟改版必须同清，否则「cookie 仍是新版」＝本来就该放行。
+await evalJs(`(function(){var old=JSON.stringify({t:Date.now(),v:'2026-01-01'});
+  try{document.cookie='mochi_rnp=; max-age=0; path=/';}catch(e){}
+  try{if(window.xyStore)window.xyStore('xy-home-v2').set('rules-notice-pass',old);}catch(e){}
+  try{localStorage.setItem('xy-home-v2:rules-notice-pass',old);}catch(e){}
+  return true;})()`);
 await navigate(baseUrl + '/index.html');
 s = await evalJs(GATE);
 ok('E3 记录版本更旧（模拟改版）后须知重新出现', s.page === true && s.active === true, s);
+
+// ===== K：只答一次的三路冗余（#1585 iQOO11 / Edge「答了 10 遍、每次重开都要重答」）=====
+// 根因不是机型：本页的闸在模块加载瞬间判，而启动回填是异步的 → 记录只在 IndexedDB 的机器上，
+// 开门那一刻同步读空＝判成没答过。修法＝cookie（同步、独立配额）＋内存/LS＋IDB 三路 + 开层前异步问库。
+console.log('K 三路冗余（cookie / 内存·LS / IndexedDB）');
+await navigate(baseUrl + '/index.html');
+await evalJs(`window.__entryRulesTest.pass(), true`);
+const CK_GET = `(function(){var m=document.cookie.match(/(?:^|;\\s*)mochi_rnp=([^;]*)/);return m?decodeURIComponent(m[1]):null;})()`;
+const ck = await evalJs(CK_GET);
+ok('K1 通过时 cookie 同步落盘（v=2026-10-22c）', ck === '2026-10-22c', ck);
+// 模拟报障机：LS 写不进/被清 + cookie 也没了，记录只剩 IndexedDB 一份
+await evalJs(`(function(){
+  try{localStorage.removeItem('xy-home-v2:rules-notice-pass');}catch(e){}
+  try{document.cookie='mochi_rnp=; max-age=0; path=/';}catch(e){}
+  return true;})()`);
+await navigate(baseUrl + '/index.html');
+s = await evalJs(GATE);
+ok('K2 只剩 IDB 记录时不再要求重答（报障机情形）', s.page === false && s.active === false, s);
+ok('K2b 命中后顺手把 LS/cookie 补回（下次同步即命中）', (await evalJs(CK_GET)) === '2026-10-22c', await evalJs(CK_GET));
+// K3 反向：库里只剩旧版记录（LS/cookie 已清）→ 仍须重答一次（版本语义没被放宽）
+await evalJs(`(function(){var old=JSON.stringify({t:Date.now(),v:'2026-01-01'});
+  try{if(window.xyStore)window.xyStore('xy-home-v2').set('rules-notice-pass',old);}catch(e){}
+  try{localStorage.removeItem('xy-home-v2:rules-notice-pass');}catch(e){}
+  try{document.cookie='mochi_rnp=; max-age=0; path=/';}catch(e){}
+  return true;})()`);
+await navigate(baseUrl + '/index.html');
+s = await evalJs(GATE);
+ok('K3 库里只剩旧版记录时仍会重答一次（闸没被放宽）', s.page === true && s.active === true, s);
 
 // ===== G：一题一屏的可达性（#1583 作者要求覆盖全部机型）=====
 // 小视口下不再依赖滚动：断言任何时刻只有一屏内容、连点「下一步」即可走到第 8 题与提交按钮，
@@ -306,13 +339,13 @@ console.log('H 强制刷新弹窗·本版一次性强提醒（旧构建号页面
     var d=w?w.querySelector('.ur-d'):null;
     return JSON.stringify({ ts: sv?sv.getAttribute('data-build-ts'):null,
       shown: !!w, btn: !!(w&&w.querySelector('.ur-go')),
-      titled: !!(w&&/2026\\.10\\.22/.test((w.querySelector('.ur-t')||{}).textContent||'')),
+      titled: !!(w&&/2026\.10\.23/.test((w.querySelector('.ur-t')||{}).textContent||'')),
       bodyHit: !!(d&&/第 8 题/.test(d.textContent||'')) });
   })()`));
   ok('H1 旧构建号页面弹出强制刷新弹窗（不依赖 version.json 比对）', h1 && h1.ts === String(OLD_TS) && h1.shown === true, h1);
-  ok('H2 弹窗标题/按钮指向 2026.10.22 且正文提到第 8 题修复', h1 && h1.titled === true && h1.bodyHit === true && h1.btn === true, h1);
+  ok('H2 弹窗标题/按钮指向 2026.10.23 且正文提到两个问题的修复', h1 && h1.titled === true && h1.bodyHit === true && h1.btn === true, h1);
   const h2 = await evalJs("(function(){try{return localStorage.getItem('xy-home-v2:update-remind-force')}catch(e){return null}})()");
-  ok('H3 强提醒标记落盘（本版只提醒一次）', h2 === '2026-10-22e', h2);
+  ok('H3 强提醒标记落盘（本版只提醒一次）', h2 === '2026-10-23a', h2);
   // H4 同会话重复调用不叠加第二层（弹窗自带 done 去重；这里不重载页面——探针对同一 URL 连续导航不稳）
   const h3 = JSON.parse(await evalJs(`(function(){
     window.mochiUpdateRemindShow && window.mochiUpdateRemindShow();
